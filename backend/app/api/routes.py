@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from app.domain.models import DocumentationRequest, DocumentationResponse
 from app.services.documentation_service import DocumentationService
+from app.core.config import settings
 
 router = APIRouter()
 documentation_service = DocumentationService()
@@ -14,4 +15,12 @@ async def generate_documentation(request: DocumentationRequest):
 
 @router.get("/health")
 async def health_check():
-    return {"status": "healthy"} 
+    return {"status": "healthy"}
+
+@router.get("/config")
+async def check_config():
+    return {
+        "openai_api_key": "present" if settings.OPENAI_API_KEY else "missing",
+        "github_token": "present" if settings.GITHUB_TOKEN else "missing",
+        "env_file": settings.Config.env_file
+    } 

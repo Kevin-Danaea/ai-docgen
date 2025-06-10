@@ -2,11 +2,10 @@ import os
 from typing import Dict, Any
 from openai import AsyncOpenAI
 from app.domain.models import DocumentationRequest
-from app.config import get_settings
+from app.core.config import settings
 
 class AIService:
     def __init__(self):
-        settings = get_settings()
         self.client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
     async def generate_documentation(self, parsed_code: Dict[str, Any], request: DocumentationRequest) -> Dict[str, Any]:

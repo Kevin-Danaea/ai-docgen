@@ -5,19 +5,23 @@ from pathlib import Path
 import re
 from app.domain.models import Repository, FileInfo, RepositoryStructure, RepositoryAnalysis
 from app.core.config import settings
+from app.core.exceptions import RepositoryError, RepositoryNotFoundError, RepositoryAccessError
 
 class RepositoryAnalyzer:
     def __init__(self):
-        self.github_api_url = "https://api.github.com"
+        self.github_api_url = settings.GITHUB_API_URL
         self.headers = {
             "Accept": "application/vnd.github.v3+json",
-            "Authorization": f"token {settings.GITHUB_TOKEN}"
+            "Authorization": f"Bearer {settings.GITHUB_TOKEN}"
         }
 
     async def analyze_repository(self, repository: Repository) -> RepositoryAnalysis:
         """
         Analiza un repositorio y devuelve información detallada sobre su estructura y contenido.
         """
+        if not settings.GITHUB_TOKEN:
+            raise RepositoryError("GitHub token no configurado")
+
         if repository.type == "github":
             return await self._analyze_github_repository(repository)
         else:
@@ -29,36 +33,49 @@ class RepositoryAnalyzer:
         """
         # Extraer owner y repo del URL
         url_parts = str(repository.url).split("/")
+        if len(url_parts) < 2:
+            raise RepositoryError("URL de repositorio inválida")
+            
         owner = url_parts[-2]
         repo = url_parts[-1].replace(".git", "")
 
         async with httpx.AsyncClient() as client:
-            # Obtener información básica del repositorio
-            repo_info = await self._get_repo_info(client, owner, repo)
-            
-            # Obtener estructura del repositorio
-            structure = await self._get_repository_structure(client, owner, repo, repository.branch)
-            
-            # Analizar lenguajes
-            languages = await self._get_languages(client, owner, repo)
-            
-            # Analizar dependencias
-            dependencies = await self._analyze_dependencies(structure)
-            
-            # Determinar tipo de proyecto y stack tecnológico
-            project_type, tech_stack = self._analyze_project_type(structure, languages)
-            
-            # Calcular score de complejidad
-            complexity_score = self._calculate_complexity_score(structure, languages)
+            try:
+                # Obtener información básica del repositorio
+                repo_info = await self._get_repo_info(client, owner, repo)
+                
+                # Obtener estructura del repositorio
+                structure = await self._get_repository_structure(client, owner, repo, repository.branch)
+                
+                # Analizar lenguajes
+                languages = await self._get_languages(client, owner, repo)
+                
+                # Analizar dependencias
+                dependencies = await self._analyze_dependencies(structure)
+                
+                # Determinar tipo de proyecto y stack tecnológico
+                project_type, tech_stack = self._analyze_project_type(structure, languages)
+                
+                # Calcular score de complejidad
+                complexity_score = self._calculate_complexity_score(structure, languages)
 
-            return RepositoryAnalysis(
-                structure=structure,
-                languages=languages,
-                dependencies=dependencies,
-                main_tech_stack=tech_stack,
-                project_type=project_type,
-                complexity_score=complexity_score
-            )
+                return RepositoryAnalysis(
+                    structure=structure,
+                    languages=languages,
+                    dependencies=dependencies,
+                    main_tech_stack=tech_stack,
+                    project_type=project_type,
+                    complexity_score=complexity_score
+                )
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 401:
+                    raise RepositoryAccessError(f"Error de autenticación con GitHub: {e.response.text}")
+                elif e.response.status_code == 404:
+                    raise RepositoryNotFoundError(f"Repositorio no encontrado: {repository.url}")
+                else:
+                    raise RepositoryError(f"Error al acceder al repositorio: {e.response.text}")
+            except Exception as e:
+                raise RepositoryError(f"Error inesperado: {str(e)}")
 
     async def _get_repo_info(self, client: httpx.AsyncClient, owner: str, repo: str) -> Dict[str, Any]:
         """Obtiene información básica del repositorio."""

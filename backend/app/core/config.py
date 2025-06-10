@@ -35,14 +35,29 @@ class Settings(BaseSettings):
     }
     
     class Config:
-        case_sensitive = True
         env_file = ".env"
+        env_file_encoding = "utf-8"
 
 @lru_cache()
 def get_settings() -> Settings:
     """
     Retorna una instancia cacheada de la configuración.
     """
-    return Settings()
+    env_path = Path(__file__).parent.parent.parent / '.env'
+    logger.debug(f"Buscando archivo .env en: {env_path}")
+    logger.debug(f"Archivo .env existe: {env_path.exists()}")
+    
+    if env_path.exists():
+        logger.debug("Contenido del archivo .env:")
+        with open(env_path, 'r') as f:
+            for line in f:
+                if '=' in line:
+                    key = line.split('=')[0]
+                    logger.debug(f"Variable encontrada: {key}")
+    
+    settings = Settings()
+    logger.debug(f"GitHub Token configurado: {'Sí' if settings.GITHUB_TOKEN else 'No'}")
+    logger.debug(f"Longitud del GitHub Token: {len(settings.GITHUB_TOKEN) if settings.GITHUB_TOKEN else 0}")
+    return settings
 
 settings = get_settings() 
